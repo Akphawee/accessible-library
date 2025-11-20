@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+google-generativeai
+chromadb
+python-dotenv
+typhoon-ocr
+langchain-text-splitters
+gTTS
+PyMuPDF
+openai
+python-multipart
