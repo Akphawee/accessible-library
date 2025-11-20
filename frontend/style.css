@@ -1,0 +1,289 @@
+/* Import Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+/* --- 1. GLOBAL VARIABLES --- */
+:root {
+    --bg-color: #000000;
+    --surface-color: #1a1a1a;
+    --border-color: #333333;
+    --text-color: #FFFFFF;
+    --text-color-muted: #aaaaaa;
+    --brand-blue: #007bff;
+    --color-correct: #33c653;
+    --color-wrong: #ff9a2f;
+    --color-danger: #ff4d4d;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: "Inter", -apple-system, sans-serif;
+    background: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    height: 100vh; /* Force full viewport height */
+    overflow: hidden; /* Prevent body scroll, containers handle it */
+}
+
+/* --- LOADER --- */
+#global-loader {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    backdrop-filter: blur(5px);
+}
+.loader-spinner {
+    border: 4px solid var(--border-color); border-top: 4px solid var(--brand-blue);
+    border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite;
+}
+#global-loader p { margin-top: 20px; font-size: 1.1rem; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* --- HEADER --- */
+.app-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 20px; background: var(--surface-color);
+    border-bottom: 1px solid var(--border-color);
+    height: 60px; flex-shrink: 0; /* Fixed height */
+    position: relative; z-index: 900;
+}
+.app-header h1 { font-size: 1.2rem; color: var(--brand-blue); }
+.header-controls { display: flex; gap: 10px; }
+#lang-switcher-btn { padding: 8px 15px; font-weight: 700; }
+
+/* --- 2. MAIN LAYOUT --- */
+.app-layout {
+    display: flex;
+    flex-direction: column; /* Stack content under header */
+    height: calc(100vh - 60px); /* Fill remaining space exactly */
+    width: 100%;
+}
+
+.hidden { display: none !important; }
+
+/* --- 3. DESKTOP SIDEBAR (Default) --- */
+#mobile-sidebar-toggle, #sidebar-overlay { display: none; } /* Hide mobile stuff on PC */
+
+#learning-page {
+    display: flex; /* Row layout for Desktop: Sidebar | Content */
+    flex-direction: row; 
+    height: 100%;
+    overflow: hidden;
+}
+
+#sidebar-container {
+    width: 300px; min-width: 300px;
+    background: var(--surface-color);
+    border-right: 1px solid var(--border-color);
+    display: flex; flex-direction: column;
+    height: 100%;
+}
+
+.sidebar-view {
+    padding: 20px; display: flex; flex-direction: column; gap: 20px;
+    height: 100%; overflow-y: auto;
+}
+
+#book-folder-tree { flex-grow: 1; overflow-y: auto; }
+.folder { margin-bottom: 15px; }
+.folder h4 { border-bottom: 1px solid var(--border-color); padding-bottom: 5px; margin-bottom: 10px; }
+.book-link {
+    display: block; padding: 8px 10px; color: var(--text-color-muted);
+    text-decoration: none; border-radius: 5px; cursor: pointer;
+}
+.book-link:hover, .book-link.active { background-color: var(--border-color); color: var(--text-color); }
+#back-to-selection-btn { margin-top: 20px; background: var(--surface-color); border: 1px solid var(--border-color); }
+
+/* --- 4. MAIN CONTENT AREA --- */
+#main-content-container {
+    flex-grow: 1; /* Take up remaining width */
+    display: flex; flex-direction: column;
+    height: 100%; overflow: hidden;
+}
+
+/* Selection & Admin Pages (Scrollable) */
+.main-view { width: 100%; height: 100%; overflow-y: auto; padding: 20px; }
+
+#selection-page h2 { border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; margin-top: 20px; }
+.selection-group, .book-list-grid { display: flex; flex-wrap: wrap; gap: 15px; }
+
+/* --- 5. LEARNING TABS --- */
+#learning-tabs {
+    display: flex; flex-shrink: 0;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 20px;
+}
+.tab-button {
+    padding: 15px 25px; cursor: pointer; background: none; border: none;
+    color: var(--text-color-muted); font-size: 1rem; font-weight: 500;
+    border-bottom: 3px solid transparent; white-space: nowrap;
+}
+.tab-button.active { color: var(--text-color); border-bottom-color: var(--brand-blue); }
+
+/* --- 6. TAB CONTENT --- */
+#learning-content {
+    flex-grow: 1;
+    overflow: hidden; /* Don't scroll the wrapper */
+    position: relative;
+}
+
+.learning-tab-view {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    padding: 20px;
+    overflow-y: auto; /* Content scrolls inside */
+}
+
+/* --- 7. CHAT VIEW (Critical Layout Fix) --- */
+#ask-view {
+    padding: 0; /* Remove padding to let footer stick */
+    overflow: hidden; /* Prevent double scrollbar */
+}
+
+#chat-log {
+    flex-grow: 1; /* Pushes footer down */
+    overflow-y: auto; /* Scroll only this part */
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 15px;
+}
+
+#chat-footer {
+    flex-shrink: 0; /* Don't squash me */
+    padding: 20px;
+    background: var(--bg-color);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Bubbles */
+.chat-bubble {
+    padding: 12px 18px; border-radius: 15px;
+    max-width: 80%;
+    background: var(--surface-color); border: 1px solid var(--border-color);
+    /* Fix shrinking/text issues */
+    flex-shrink: 0; 
+    white-space: normal;
+    overflow-x: auto; 
+}
+.chat-bubble.user { background: var(--brand-blue); color: white; align-self: flex-end; border-bottom-right-radius: 5px; }
+.chat-bubble.ai { align-self: flex-start; border-bottom-left-radius: 5px; }
+.chat-bubble.ai p { margin-bottom: 10px; }
+.chat-bubble.ai ul { margin-left: 20px; margin-bottom: 10px; }
+
+#chat-input-area { display: flex; gap: 10px; }
+.tts-speed-controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color); }
+.tts-speed-controls label { font-size: 0.9rem; color: var(--text-color-muted); }
+.speed-btn { padding: 4px 8px; font-size: 0.85rem; background: var(--bg-color); border: 1px solid var(--border-color); }
+.speed-btn.active { background: var(--brand-blue); border-color: var(--brand-blue); color: #fff; }
+
+/* --- 8. READ & SUMMARY TABS --- */
+#read-view-content, #summary-content-area {
+    background: var(--surface-color); border: 1px solid var(--border-color);
+    border-radius: 8px; padding: 30px;
+    font-size: 1.1rem; line-height: 1.7; white-space: normal; overflow-x: auto;
+}
+#read-view-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; }
+
+/* --- 9. CONTROLS & ADMIN --- */
+button {
+    font-size: 1rem; padding: 12px 18px; border-radius: 8px; border: none;
+    font-weight: 500; color: #ffffff; cursor: pointer;
+    background: var(--surface-color); border: 1px solid var(--border-color);
+    transition: filter 0.2s;
+}
+button:hover { filter: brightness(1.2); }
+button:focus-visible { outline: 3px solid var(--brand-blue); outline-offset: 2px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.nav-button.active { background: var(--brand-blue); border-color: var(--brand-blue); color: white; }
+button.scan-btn { background: var(--color-wrong); border-color: var(--color-wrong); }
+#chat-send-btn { background: var(--brand-blue); border-color: var(--brand-blue); }
+#chat-voice-btn { background: #2a2a2a; }
+#chat-voice-btn.glowing { animation: pulse-red 1.5s infinite; box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7); }
+@keyframes pulse-red {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 77, 77, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); }
+}
+button.delete-btn { background: var(--color-danger); border-color: var(--color-danger); }
+input[type="text"], select {
+    font-size: 1rem; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);
+    background: var(--bg-color); color: var(--text-color); width: 100%;
+}
+input:focus { outline: none; border-color: var(--brand-blue); }
+
+/* --- ADMIN PANEL VISIBILITY FIX --- */
+.admin-list { display: flex; flex-direction: column; gap: 10px; }
+.admin-list-item {
+    display: flex; justify-content: space-between; align-items: center; padding: 15px;
+    background-color: #2a2a2a; /* VISIBLE GREY BG */
+    border: 1px solid var(--border-color); border-radius: 8px;
+}
+.admin-list-item span { font-weight: 500; color: var(--text-color); }
+.admin-list-item .item-controls { display: flex; gap: 10px; align-items: center; }
+.admin-list-item small { display: block; color: var(--text-color-muted); font-size: 0.8rem; margin-top: 4px; }
+
+/* --- TABLES --- */
+table { width: 100%; border-collapse: collapse; margin: 20px 0; background: var(--surface-color); border: 1px solid var(--border-color); }
+th, td { padding: 12px 15px; border: 1px solid var(--border-color); text-align: left; vertical-align: top; }
+th { background-color: #2a2a2a; font-weight: 700; color: var(--text-color); }
+tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.05); }
+figure, img { max-width: 100%; height: auto; margin: 20px 0; }
+
+/* ===============================================
+--- 10. MOBILE RESPONSIVE OVERRIDES ---
+===============================================
+*/
+@media (max-width: 768px) {
+    body { overflow: auto; } /* Allow body scroll on mobile only */
+    .app-layout { display: block; height: auto; } /* Stack layout */
+    
+    #selection-page, #admin-page { height: auto; }
+
+    /* Learning Page Mobile */
+    #learning-page {
+        flex-direction: column; /* Stack sidebar/content */
+        height: calc(100vh - 60px);
+    }
+
+    /* Sidebar Toggle & Drawer */
+    #mobile-sidebar-toggle {
+        display: block; width: 100%; text-align: left; background: var(--surface-color);
+        border: none; border-bottom: 1px solid var(--border-color); padding: 15px 20px;
+        font-weight: 700; color: var(--brand-blue); position: sticky; top: 0; z-index: 100;
+    }
+    #sidebar-container {
+        position: fixed; top: 0; bottom: 0; left: 0;
+        width: 85%; max-width: 300px; height: 100vh;
+        z-index: 2000; transform: translateX(-100%); transition: transform 0.3s ease-in-out;
+    }
+    #sidebar-container.active { transform: translateX(0); box-shadow: 5px 0 15px rgba(0,0,0,0.5); }
+    #sidebar-overlay {
+        display: block; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 1999; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    #sidebar-overlay.active { opacity: 1; pointer-events: auto; }
+
+    /* Content Fixes */
+    #main-content-container { overflow: hidden; height: 100%; }
+    #learning-content { overflow-y: auto; height: 100%; }
+
+    /* Chat Mobile */
+    #ask-view { height: 100%; padding: 0; justify-content: space-between; }
+    #chat-log { padding: 15px; flex-grow: 1; overflow-y: auto; }
+    .chat-bubble { max-width: 92%; }
+    #chat-footer {
+        padding: 15px; position: sticky; bottom: 0;
+    }
+
+    /* UI Tweaks */
+    #chat-input-area { flex-wrap: wrap; }
+    #chat-text-input { flex-basis: 100%; }
+    #chat-send-btn, #chat-voice-btn { flex-grow: 1; }
+    .tts-speed-controls { flex-wrap: wrap; }
+    
+    #read-view-nav { flex-wrap: wrap; gap: 10px; }
+    #page-indicator { width: 100%; text-align: center; order: -1; }
+    #page-prev-btn, #page-next-btn { flex-grow: 1; }
+    
+    .admin-list-item { flex-direction: column; align-items: flex-start; gap: 15px; }
+    .admin-list-item .item-controls { width: 100%; flex-wrap: wrap; }
+}

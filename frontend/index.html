@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accessible Library</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="global-loader" class="hidden">
+        <div class="loader-spinner"></div>
+        <p id="loader-text">Loading...</p>
+    </div>
+    
+    <header class="app-header">
+        <h1>Accessible Library</h1>
+        <div class="header-controls">
+            <button id="lang-switcher-btn" class="nav-button">TH</button>
+            <button id="admin-page-btn" class="nav-button">Admin Panel</button>
+        </div>
+    </header>
+
+    <div class="app-layout">
+
+        <div id="selection-page" class="main-view">
+            
+            <h2 data-lang-key="select_category">Filter by Category</h2>
+            <div class="selection-group" id="category-selection-group">
+                </div>
+
+            <h2 data-lang-key="books_in_category">All Books</h2>
+            <div id="book-list-area" class="book-list-grid">
+                </div>
+        </div>
+
+        <div id="learning-page" class="main-view hidden">
+            
+            <div id="sidebar-container">
+                <div id="book-list-sidebar" class="sidebar-view">
+                    <h2 data-lang-key="my_library">My Library</h2>
+                    <div id="book-folder-tree">
+                        </div>
+                    <button id="back-to-selection-btn" data-lang-key="back_to_selection">Back to Selection</button>
+                </div>
+            </div>
+
+            <div id="main-content-container">
+                <div id="learning-tabs">
+                    <button id="tab-btn-ask" class="tab-button active" data-lang-key="tab_ask">Ask (Q&A)</button>
+                    <button id="tab-btn-summary" class="tab-button" data-lang-key="tab_summary">Summary</button>
+                    <button id="tab-btn-read" class="tab-button" data-lang-key="tab_read">Read Book</button>
+                    <button id="tab-btn-test" class="tab-button" data-lang-key="tab_test">Mock Exam</button>
+                </div>
+                
+                <div id="learning-content">
+
+                    <div id="ask-view" class="learning-tab-view">
+                        <div id="chat-log" aria-live="polite"></div>
+                        
+                        <div id="chat-footer">
+                            <div id="chat-input-area">
+                                <input type="text" id="chat-text-input" placeholder="Type your question..." aria-label="Type your question" data-lang-key="placeholder_ask">
+                                <button id="chat-send-btn" aria-label="Send text message" data-lang-key="btn_send">Send</button>
+                                <button id="chat-voice-btn" aria-label="Start voice command" data-lang-key="btn_start_voice">Start Voice</button>
+                            </div>
+                            <div id="tts-controls" class="tts-speed-controls">
+                                <label data-lang-key="label_speech_speed">Speech Speed</label>
+
+                                <button class="speed-btn" data-speed="0.75">0.75x</button>
+                                <button class="speed-btn active" data-speed="1.0">1x</button>
+                                <button class="speed-btn" data-speed="1.5">1.5x</button>
+                                <button class="speed-btn" data-speed="2.0">2x</button>
+                            </div>
+                            <div id="chat-status" class="status-text"></div>
+                        </div>
+                    </div>
+
+                    <div id="summary-view" class="learning-tab-view hidden">
+                        <h3 data-lang-key="summary_title">Book Summary</h3>
+                        <div id="summary-content-area" aria-live="polite"></div>
+                    </div>
+
+                    <div id="read-view" class="learning-tab-view hidden">
+                        <div id="read-view-reader" class="hidden">
+                            <div id="read-view-content" aria-live="polite"></div>
+                            <div id="read-view-nav">
+                                <button id="page-prev-btn" data-lang-key="btn_prev_page">Previous Page</button>
+                                <span id="page-indicator">Page 1 / ?</span>
+                                <button id="page-next-btn" data-lang-key="btn_next_page">Next Page</button>
+                            </div>
+                        </div>
+                        <div id="read-view-scan" class="test-view-panel hidden">
+                            <h3 data-lang-key="scan_title">Book Not Optimized</h3>
+                            <p data-lang-key="scan_desc_1">This book's text has not been scanned...</p>
+                            <p data-lang-key="scan_desc_2">For the best experience, an admin can...</p>
+                            <button id="start-scan-btn" class="scan-btn" data-lang-key="btn_scan_book">Scan & Optimize Book (Slow)</button>
+                            <div id="scan-status" class="status-text"></div>
+                        </div>
+                    </div>
+
+                    <div id="test-view" class="learning-tab-view hidden">
+                        <div id="q-bank-generate" class="test-view-panel hidden">
+                            <h3 data-lang-key="q_bank_not_found">Question Bank Not Found</h3>
+                            <p data-lang-key="q_bank_desc">This book doesn't have a question bank yet.</p>
+                            <button id="generate-q-bank-btn" data-lang-key="btn_generate_q_bank">Generate Question Bank (5-10 Mins)</button>
+                            <div id="q-bank-generate-status" class="status-text"></div>
+                        </div>
+                        <div id="q-bank-portal" class="test-view-panel hidden">
+                            <h3 data-lang-key="portal_title">Mock Exam Portal</h3>
+                            <div id="q-bank-stats" class="quiz-stats-area"></div>
+                            <div class="quiz-controls">
+                                <button id="start-flashcard-btn" data-lang-key="btn_start_session">Start Flashcard Session</button>
+                            </div>
+                            <div id="q-bank-answered-list"></div>
+                            <button id="reset-quiz-progress-btn" class="delete-btn" data-lang-key="btn_reset_progress">Reset All Progress</button>
+                        </div>
+                        <div id="q-bank-flashcard" class="test-view-panel hidden">
+                            <div id="flashcard-question-area"></div>
+                            <div id="flashcard-options-area"></div>
+                            <div id="flashcard-feedback-area" class="hidden">
+                                <button id="flashcard-next-btn" data-lang-key="btn_next_card">Next Card</button>
+                            </div>
+                            <button id="flashcard-quit-btn" data-lang-key="btn_quit_session">Quit Session</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="admin-page" class="main-view hidden">
+            <div class="admin-header">
+                <h2>Library Admin Panel</h2>
+                <button id="back-to-library-btn" class="nav-button">Back to Library</button>
+            </div>
+            <div class="admin-section">
+                <h3>Manage Categories</h3>
+                <div id="admin-category-list" class="admin-list"></div>
+                <form id="admin-add-category-form" class="admin-form">
+                    <label for="new-cat-name">New Category Display Name:</label>
+                    <input type="text" id="new-cat-name" required>
+                    <label for="new-cat-id">New Category ID (e.g., 'history-101'):</label>
+                    <input type="text" id="new-cat-id" required>
+                    <button type="submit">Add Category</button>
+                </form>
+            </div>
+            <div class="admin-section">
+                <h3>Manage Books</h3>
+                <form id="admin-upload-form" class="admin-form">
+                    <h4>Upload New Book</h4>
+                    <label for="upload-display-name">Display Name:</label>
+                    <input type="text" id="upload-display-name" required>
+                    <label for="upload-category">Assign to Category:</label>
+                    <select id="upload-category" required></select>
+                    <label for="upload-file">PDF File (Filename will be used as unique ID):</label>
+                    <input type="file" id="upload-file" accept=".pdf" required>
+                    <button type="submit">Upload Book</button>
+                    <div id="upload-status" class="status-text"></div>
+                </form>
+                <h4>Existing Books</h4>
+                <div id="admin-book-list" class="admin-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
