@@ -155,23 +155,39 @@ def process_and_ingest_pdf(file_path: str, book_id: str, category_id: str, displ
         for page_num, page in enumerate(doc):
             page_index = page_num + 1
             print(f"    Ingesting page {page_index}/{len(doc)}...")
-            text = page.get_text()
-            
-            if is_text_corrupted_v3(text):
-                print(f"    Page {page_index} is corrupted. Calling Typhoon API.")
+            raw_text = page.get_text("text") or ""
+
+            # --- Detect emptiness / garbage ---
+            is_empty = not raw_text.strip()
+            is_garbage = False
+
+            if raw_text.strip():
+                ascii_ratio = sum(ch.isascii() for ch in raw_text) / max(1, len(raw_text))
+                few_spaces = raw_text.count(" ") < 2
+                has_replacement = "�" in raw_text
+
+                if ascii_ratio < 0.25 or few_spaces or has_replacement:
+                    is_garbage = True
+
+            needs_ocr = is_empty or is_garbage or is_text_corrupted_v3(raw_text)
+
+            if needs_ocr:
+                print(f"    Page {page_index}: RAW text is empty/garbled → OCR fallback")
                 try:
                     ocr_text = ocr_document(
-                        pdf_or_image_path=file_path, 
+                        pdf_or_image_path=file_path,
                         page_num=page_index
                     )
-                    text_to_use = ocr_text
-                    print(f"    API success. Waiting 3.1s...")
+                    text_to_use = ocr_text.strip()
+                    print("    OCR success. Waiting 3.1s...")
                     time.sleep(3.1)
                 except Exception as e:
-                    print(f"    Typhoon API failed: {e}. Skipping page.")
+                    print(f"    OCR failed: {e}. Saving blank.")
                     text_to_use = ""
             else:
-                text_to_use = text
+                print(f"    Page {page_index}: RAW text OK → using extracted text.")
+                text_to_use = raw_text.strip()
+
             
             page_cache_path = os.path.join(book_page_cache_dir, f"page_{page_index}.txt")
             with open(page_cache_path, 'w', encoding='utf-8') as f:
@@ -732,18 +748,38 @@ def scan_book_task(book_id: str):
             page_index = page_num + 1
             print(f"    Scanning page {page_index}/{total_pages}...")
             
-            # --- STEP 1: Get clean text from Typhoon ---
-            try:
-                ocr_text = ocr_document(
-                    pdf_or_image_path=original_pdf_path, 
-                    page_num=page_index
-                )
-                text_to_use = ocr_text # This is already Markdown
-                print(f"API success. Waiting 3.1s...")
-                time.sleep(3.1)
-            except Exception as e:
-                print(f"Typhoon API failed for page {page_index}: {e}. Saving blank. !!!")
-                text_to_use = ""
+            # --- STEP 1: Try fast text extraction first ---
+            raw_text = page.get_text("text") or ""
+
+            is_empty = not raw_text.strip()
+            is_garbage = False
+
+            if raw_text.strip():
+                ascii_ratio = sum(ch.isascii() for ch in raw_text) / max(1, len(raw_text))
+                space_count = raw_text.count(" ")
+
+                if ascii_ratio < 0.25 or space_count < 2 or "�" in raw_text:
+                    is_garbage = True
+
+            # Decide if OCR is needed
+            needs_ocr = is_empty or is_garbage
+
+            if needs_ocr:
+                print(f"Page {page_index}: Extract failed or garbled → using OCR...")
+                try:
+                    ocr_text = ocr_document(
+                        pdf_or_image_path=original_pdf_path,
+                        page_num=page_index
+                    )
+                    text_to_use = ocr_text.strip()
+                    print("   OCR success. Waiting 3.1s...")
+                    time.sleep(3.1)
+                except Exception as e:
+                    print(f"   OCR failed: {e}")
+                    text_to_use = ""
+            else:
+                print(f"Page {page_index}: Extract success → using extracted text.")
+                text_to_use = raw_text.strip()
             
             # --- STEP 2: REMOVED. We no longer call Gemini to reformat. ---
 
@@ -772,8 +808,15 @@ def scan_book_task(book_id: str):
                 os.remove(os.path.join(QUESTION_BANK_CACHE_DIR, filename))
                 print(f"  Deleted question bank: {filename}")
 
-        os.remove(original_pdf_path)
-        print(f"---BACKGROUND: SUCCESS! Full scan complete. Original PDF deleted. ---")
+        # Check if ALL pages are empty → preserve PDF
+        all_empty = all(not p.strip() for p in full_text_pages)
+
+        if all_empty:
+            print("!!! WARNING: All pages empty. Keeping original PDF for debugging.")
+        else:
+            os.remove(original_pdf_path)
+            print(f"---BACKGROUND: SUCCESS! Full scan complete. Original PDF deleted. ---")
+
 
     except Exception as e:
         print(f"---BACKGROUND: !!! FATAL ERROR during full scan for {book_id}: {e} !!!")
