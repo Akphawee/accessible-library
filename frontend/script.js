@@ -17,10 +17,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentBookSummary = null;
     let currentPlaybackRate = 1.0;
     
+    let ttsToken = 0; // ใช้กันเสียงเก่าที่ยังโหลดไม่เสร็จ
+
     let isChatBotListening = false;
     let currentAudio = null;
+    let pausedAudio = null;
     let currentPage = 1;
     let totalPages = 0;
+
+
 
     // --- TRANSLATIONS ---
     const translations = {
@@ -116,6 +121,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadStatus = document.getElementById('upload-status');
     const adminBookList = document.getElementById('admin-book-list');
 
+    
+    if (readContent) {
+    readContent.setAttribute("tabindex", "0");
+    }
+    if (flashcardQuestionArea) {
+        flashcardQuestionArea.tabIndex = 0;
+    }
+    if (flashcardFeedbackArea) {
+        flashcardFeedbackArea.tabIndex = 0;
+    }
+
+    
+
     // --- 3. ASR SETUP ---
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let webRecognition;
@@ -128,22 +146,92 @@ document.addEventListener('DOMContentLoaded', () => {
         webRecognition.onend = () => { if (currentLang === 'en-US') stopChatListening(); };
     }
     let mediaRecorder = null, audioChunks = [];
+    function stopTTS() {
+            // เปลี่ยน token -> ยกเลิกงาน TTS เก่าที่กำลังโหลดอยู่
+            ttsToken++;
+
+            // หยุดเสียงจาก gTTS (Audio backend)
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                currentAudio = null;
+            }
+
+            // หยุดเสียงจาก browser speechSynthesis
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+        }
+
+
+    // Allow interruption ONLY from speed buttons
+    document.getElementById("tts-controls").addEventListener("click", (e) => {
+        if (e.target.classList.contains("speed-btn")) {
+            stopTTS();
+        }
+    });
+
+
 
     // --- 4. TTS ---
     function speak(text, onEndCallback = null) {
-        if (!text || typeof text !== 'string' || text.trim() === "") { if (onEndCallback) onEndCallback(); return; }
-        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-        if(chatStatus) chatStatus.textContent = "Speaking...";
-        fetch(`${API_URL}/synthesize-speech`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, lang: currentLang }) })
-        .then(res => res.ok ? res.blob() : Promise.reject("TTS API failed"))
-        .then(blob => {
-            currentAudio = new Audio(URL.createObjectURL(blob));
-            currentAudio.playbackRate = currentPlaybackRate;
-            currentAudio.play();
-            currentAudio.onended = () => { if(chatStatus) chatStatus.textContent = "Ready."; currentAudio = null; if (onEndCallback) onEndCallback(); };
-        })
-        .catch(err => { console.error("TTS Error:", err); if(chatStatus) chatStatus.textContent = "TTS Error."; if (onEndCallback) onEndCallback(); });
-    }
+            // ยกเลิกทุกเสียงเดิม + เพิ่ม token
+            stopTTS();
+            const myToken = ttsToken;   // จด token ชุดนี้ไว้
+
+            if (!text || !text.trim()) {
+                if (onEndCallback) onEndCallback();
+                return;
+            }
+
+            // พูด "โปรดรอสักครู่ / Please wait" ด้วย browser TTS (เร็ว)
+            if (window.speechSynthesis) {
+                const filler = new SpeechSynthesisUtterance(
+                    currentLang === "th-TH" ? "โปรดรอสักครู่" : "Please wait"
+                );
+                filler.lang = currentLang;
+                window.speechSynthesis.speak(filler);
+            }
+
+            chatStatus.textContent = 
+                currentLang === "th-TH" ? "กำลังสร้างเสียง..." : "Generating voice...";
+
+            fetch(`${API_URL}/synthesize-speech`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ text: text, lang: currentLang })
+            })
+            .then(res => res.blob())
+            .then(blob => {
+                // ถ้าระหว่างโหลดเสียงมีการเรียก stopTTS() แล้ว -> token เปลี่ยน -> ไม่ต้องเล่นเสียงนี้
+                if (myToken !== ttsToken) {
+                    console.log("TTS canceled before audio loaded, skipping playback.");
+                    return;
+                }
+
+                currentAudio = new Audio(URL.createObjectURL(blob));
+                currentAudio.playbackRate = currentPlaybackRate;
+                currentAudio.play();
+
+                currentAudio.onended = () => {
+                    // เสียงจบเองโดยไม่โดน stopTTS()
+                    if (myToken === ttsToken) {
+                        chatStatus.textContent = "";
+                        currentAudio = null;
+                        if (onEndCallback) onEndCallback();
+                    }
+                };
+            })
+            .catch(err => {
+                console.error("TTS error:", err);
+                if (myToken === ttsToken) {
+                    chatStatus.textContent = "TTS failed.";
+                }
+            });
+        }
+
+
+    
 
     // --- 5. LOADER ---
     function showLoader(text = "Loading...") { loaderText.textContent = text; globalLoader.classList.remove('hidden'); }
@@ -241,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!found) bookListArea.innerHTML = '<p>No books found in this category.</p>';
     }
     async function selectBook(bookId) {
+        const bookMeta = globalLibraryData.books[bookId];
         if (currentBook === bookId && currentView === 'learning') return;
         currentBook = bookId; localStorage.setItem('lastBookId', bookId);
         chatLog.innerHTML = ''; currentBookSummary = null; globalQuestionBank = [];
@@ -248,6 +337,17 @@ document.addEventListener('DOMContentLoaded', () => {
         showMainView('learning'); showLearningTab('ask');
         const historyLoaded = loadChatHistory(bookId);
         if (!historyLoaded) addAiBubble(translations[currentLang]['welcome_message'].replace('{bookName}', globalLibraryData.books[currentBook].display_name), false);
+        if (!bookMeta.is_scanned) {
+            generateQBankBtn.disabled = true;
+            generateQBankBtn.classList.add("disabled-btn");
+            generateQBankBtn.textContent =
+                translations[currentLang]['btn_generate_q_bank'] + " (Scan required)";
+        } else {
+            generateQBankBtn.disabled = false;
+            generateQBankBtn.classList.remove("disabled-btn");
+            generateQBankBtn.textContent =
+                translations[currentLang]['btn_generate_q_bank'];
+        }
     }
     
     // --- History ---
@@ -289,27 +389,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isChatBotListening) return; isChatBotListening = true;
         chatStatus.textContent = "Listening..."; chatVoiceBtn.textContent = "Listening..."; chatVoiceBtn.classList.add('glowing');
         if (currentLang === 'en-US') { if(webRecognition) { webRecognition.lang = 'en-US'; webRecognition.start(); } else { alert("No Web Speech"); stopChatListening(); } }
-        else { startTyphoonListening(); }
+        else {
+            if (webRecognition) { webRecognition.lang = 'th-TH'; webRecognition.start(); }
+            else { alert("No Web Speech for Thai"); stopChatListening(); }
+            }
     }
-    async function startTyphoonListening() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream); audioChunks = [];
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = async () => {
-                const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                chatStatus.textContent = "Transcribing...";
-                const fd = new FormData(); fd.append("file", blob, "recording.webm");
-                try {
-                    const res = await fetch(`${API_URL}/transcribe-audio`, { method: 'POST', body: fd });
-                    if(!res.ok) throw new Error("Failed");
-                    const data = await res.json();
-                    if(data.text) handleRAGCommand(data.text);
-                } catch(e) { console.error(e); alert("ASR Failed"); }
-            };
-            mediaRecorder.start();
-        } catch(e) { console.error(e); alert("Mic Error"); stopChatListening(); }
-    }
+    
+    
     function stopChatListening() {
         if (!isChatBotListening) return; isChatBotListening = false;
         chatStatus.textContent = "Ready."; chatVoiceBtn.textContent = translations[currentLang]['btn_start_voice']; chatVoiceBtn.classList.remove('glowing');
@@ -332,9 +418,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadReadBookTab() {
         if (!currentBook) return;
         if (globalLibraryData.books[currentBook].is_scanned) {
-            readViewReaderPanel.classList.remove('hidden'); readViewScanPanel.classList.add('hidden'); fetchPage(1);
+            readViewReaderPanel.classList.remove("hidden");
+            readViewScanPanel.classList.add("hidden");
+            fetchPage(1);
         } else {
-            readViewReaderPanel.classList.add('hidden'); readViewScanPanel.classList.remove('hidden'); scanStatus.textContent = "";
+            readViewReaderPanel.classList.add("hidden");
+            readViewScanPanel.classList.remove("hidden");
         }
     }
     async function fetchPage(n) {
@@ -379,47 +468,150 @@ document.addEventListener('DOMContentLoaded', () => {
             qBankGenerateStatus.textContent = (await res.json()).message;
         } catch(e) { qBankGenerateStatus.textContent = "Error"; generateQBankBtn.disabled=false; } finally { hideLoader(); }
     }
-    function updateQuizStats() {
-        const p = getQuizProgress(); const total = Object.keys(p).length;
-        qBankStats.innerHTML = `Answered: ${total}/${globalQuestionBank.length}`;
-        qBankAnsweredList.innerHTML = `<h4>Answered</h4>`;
-        for(const [i, d] of Object.entries(p)) {
-            const q = globalQuestionBank[i]; if(!q) continue;
-            const dDiv = document.createElement('div'); dDiv.className = d.isCorrect?'answered-q-item correct':'answered-q-item wrong';
-            dDiv.innerHTML=`<p>${q.question}</p><small>${d.isCorrect?'Correct':'Wrong'}</small>`;
-            qBankAnsweredList.appendChild(dDiv);
-        }
+    function handleReviewOfQuestion(questionObj) {
+    if (!currentBook) return;
+
+    // Switch to ASK tab
+    showLearningTab("ask");
+
+    // Create the follow-up prompt
+    const followUp =
+        currentLang === "th-TH"
+            ? `อธิบายเพิ่มเติมเกี่ยวกับคำถามนี้:\n\n${questionObj.question}`
+            : `Explain more about this question:\n\n${questionObj.question}`;
+
+    chatTextInput.value = followUp;
+    handleRAGCommand(followUp);
     }
+    function updateQuizStats() {
+            const p = getQuizProgress(); 
+            const total = Object.keys(p).length;
+            qBankStats.innerHTML = `Answered: ${total}/${globalQuestionBank.length}`;
+            qBankAnsweredList.innerHTML = `<h4>Answered</h4>`;
+
+            for (const [i, d] of Object.entries(p)) {
+                const q = globalQuestionBank[i];
+                if (!q) continue;
+
+                const dDiv = document.createElement("button");
+                dDiv.type = "button";
+                dDiv.className = d.isCorrect ? "answered-q-item correct" : "answered-q-item wrong";
+                dDiv.tabIndex = 0;
+                dDiv.innerHTML = `<p>${q.question}</p><small>${d.isCorrect ? 'Correct' : 'Wrong'}</small>`;
+
+                // กดแล้วไปถามต่อใน Q&A
+                dDiv.addEventListener("click", () => handleReviewOfQuestion(q));
+                dDiv.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleReviewOfQuestion(q);
+                    }
+                });
+
+        qBankAnsweredList.appendChild(dDiv);
+    }
+}
+
+    
     function showTestPanel(id) {
         ['q-bank-generate', 'q-bank-portal', 'q-bank-flashcard'].forEach(pid => document.getElementById(pid).classList.add('hidden'));
         document.getElementById(id).classList.remove('hidden');
     }
     function startFlashcardSession() {
-        const p = getQuizProgress(); const answered = Object.keys(p).map(Number);
-        const avail = globalQuestionBank.map((q, i) => ({...q, idx: i})).filter((q, i) => !answered.includes(i));
-        if(avail.length===0) { alert("Done!"); return; }
-        currentFlashcardDeck = avail.sort(() => 0.5 - Math.random());
-        showTestPanel('q-bank-flashcard'); showNextFlashcard();
-    }
-    function showNextFlashcard() {
-        flashcardFeedbackArea.classList.add('hidden');
+            const p = getQuizProgress(); const answered = Object.keys(p).map(Number);
+            const avail = globalQuestionBank.map((q, i) => ({...q, idx: i})).filter((q, i) => !answered.includes(i));
+            if(avail.length===0) { alert("Done!"); return; }
+            currentFlashcardDeck = avail.sort(() => 0.5 - Math.random());
+            showTestPanel('q-bank-flashcard'); showNextFlashcard();
+        }
+        function showNextFlashcard() {
+        // RESET FEEDBACK
+        flashcardFeedbackArea.classList.add("hidden");
+        flashcardFeedbackArea.querySelector("#flashcard-feedback-text").textContent = "";
+
+        // RESET UI
+        flashcardOptionsArea.innerHTML = "";
+
         const card = currentFlashcardDeck.pop();
-        if(!card) { alert("Session done!"); loadQuestionBank(); return; }
-        flashcardQuestionArea.textContent = card.question; flashcardOptionsArea.innerHTML='';
+        if (!card) {
+            alert("Session done!");
+            loadQuestionBank();
+            return;
+        }
+
+        flashcardQuestionArea.textContent = card.question;
+
         card.options.forEach((opt, i) => {
-            const btn = document.createElement('button'); btn.className='flashcard-option-btn'; btn.textContent=opt;
+            const btn = document.createElement("button");
+            btn.className = "flashcard-option-btn";
+            btn.textContent = opt;
+
             btn.onclick = () => {
                 const isCor = (i === card.correctAnswerIndex);
-                const p = getQuizProgress(); p[card.idx] = { userAnswerIndex: i, isCorrect: isCor }; saveQuizProgress(p);
-                flashcardOptionsArea.querySelectorAll('button').forEach(b => b.disabled=true);
-                btn.classList.add(isCor?'correct':'wrong');
-                flashcardFeedbackArea.querySelector('span').textContent = isCor?"Correct!":"Wrong!";
-                flashcardFeedbackArea.classList.remove('hidden');
+
+                flashcardOptionsArea.querySelectorAll("button")
+                    .forEach(b => b.disabled = true);
+
+                btn.classList.add(isCor ? "correct" : "wrong");
+
+                if (!isCor) {
+                    const correctBtn = flashcardOptionsArea.children[card.correctAnswerIndex];
+                    if (correctBtn) correctBtn.classList.add("correct");
+                }
+
+                // SHOW FEEDBACK
+                const correctText = card.options[card.correctAnswerIndex];
+                flashcardFeedbackArea.querySelector("#flashcard-feedback-text")
+                    .textContent = isCor ? "Correct!" : `Incorrect! The correct answer is: ${correctText}`;
+
+                flashcardFeedbackArea.classList.remove("hidden");
             };
+
             flashcardOptionsArea.appendChild(btn);
         });
     }
+
     function handleResetProgress() { if(confirm("Reset?")) { localStorage.removeItem(`quiz_progress_${currentBook}_${currentLang}`); updateQuizStats(); } }
+
+    // --- Accessible Focus Reader (Web TTS only, reads visible text only)
+    document.addEventListener("focusin", (e) => {
+            const el = e.target;
+            if (!el) return;
+
+            // จะให้อ่านเฉพาะ element แบบ interactive + คำถาม flashcard + feedback
+            if (
+                !el.matches(
+                    "button, a, input, select, textarea, .tab-button, .book-button, " +
+                    "#flashcard-question-area, #flashcard-feedback-area"
+                )
+            ) {
+                return;
+            }
+
+            // หยุดเสียงทุกอย่างก่อนอ่านใหม่
+            stopTTS();
+
+            let text = 
+                el.innerText?.trim() || 
+                el.textContent?.trim() || 
+                el.getAttribute("aria-label") || "";
+
+            if (!text) return;
+
+            if (text.length > 200) {
+                text = currentLang === "th-TH"
+                    ? "เลือกเนื้อหาแล้ว กดเอนเทอร์เพื่อฟังเสียง"
+                    : "Content selected. Press enter to read.";
+            }
+
+            if (window.speechSynthesis) {
+                const msg = new SpeechSynthesisUtterance(text);
+                msg.lang = currentLang;
+                window.speechSynthesis.speak(msg);
+            }
+        });
+
+
 
     // --- ADMIN (FIXED) ---
     function populateAdminPage() {
@@ -503,6 +695,79 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!confirm("Delete book?")) return; showLoader("Deleting..."); await fetch(`${API_URL}/book/${bookId}`, { method: 'DELETE' }); await refreshLibraryData(); hideLoader(); 
     }
 
+    async function handleGenerateQuestionBank() {
+        qBankGenerateStatus.textContent = "Generating...";
+        generateQBankBtn.disabled = true;
+        showLoader("Generating question bank...");
+
+        try {
+            const res = await fetch(
+                `${API_URL}/generate-question-bank/${currentBook}/${currentLang}`,
+                { method: "POST" }
+            );
+
+            if (!res.ok) {
+                throw new Error("Generation failed");
+            }
+
+            const data = await res.json();
+            qBankGenerateStatus.textContent = data.message || "Generation started.";
+
+        } catch (e) {
+            qBankGenerateStatus.textContent = "Failed to generate.";
+            generateQBankBtn.disabled = false;
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function loadQuestionBank() {
+        showLoader("Loading questions...");
+
+        try {
+            const res = await fetch(`${API_URL}/get-question-bank/${currentBook}/${currentLang}`);
+
+            if (res.status === 404) {
+                globalQuestionBank = [];
+                showTestPanel("q-bank-generate");
+                return;
+            }
+
+            if (!res.ok) throw new Error();
+
+            globalQuestionBank = await res.json();
+
+            showTestPanel("q-bank-portal");
+            updateQuizStats();
+
+        } catch (e) {
+            showTestPanel("q-bank-generate");
+            qBankGenerateStatus.textContent = "Failed to load question bank.";
+        } finally {
+            hideLoader();
+        }
+    }
+
+    function startFlashcardSession() {
+            const p = getQuizProgress();
+            const answered = Object.keys(p).map(Number);
+
+            const available = globalQuestionBank
+                .map((q, i) => ({ ...q, idx: i }))
+                .filter(q => !answered.includes(q.idx));
+
+            if (available.length === 0) {
+                alert("You’ve completed all flashcards!");
+                return;
+            }
+
+            currentFlashcardDeck = available.sort(() => Math.random() - 0.5);
+            showTestPanel("q-bank-flashcard");
+            showNextFlashcard();
+        }
+
+
+
     // --- 12. EVENTS ---
     try {
         if(mobileSidebarToggle) {
@@ -523,6 +788,34 @@ document.addEventListener('DOMContentLoaded', () => {
         langSwitcherBtn.addEventListener('click', toggleLanguage);
         adminPageBtn.addEventListener('click', () => showMainView('admin'));
         backToLibraryBtn.addEventListener('click', () => showMainView('selection'));
+
+
+        startScanBtn.addEventListener('click', async () => {
+                if (!currentBook) return;
+
+                scanStatus.textContent = "Starting scan...";
+                showLoader("Scanning...");
+
+                try {
+                    const res = await fetch(`${API_URL}/scan-book/${currentBook}`, {
+                        method: "POST"
+                    });
+
+                    if (!res.ok) {
+                        throw new Error("Scan failed");
+                    }
+
+                    const data = await res.json();
+                    scanStatus.textContent = data.message || "Scan started.";
+
+                    // IMPORTANT: refresh library so `is_scanned` becomes true
+                    await refreshLibraryData();
+                } catch (e) {
+                    scanStatus.textContent = "Scan failed.";
+                } finally {
+                    hideLoader();
+                }
+            });
         
         tabButtons.ask.addEventListener('click', () => showLearningTab('ask'));
         tabButtons.summary.addEventListener('click', () => showLearningTab('summary'));
@@ -536,6 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatTextInput.addEventListener('keypress', (e) => { if(e.key==='Enter') chatSendBtn.click(); });
         chatVoiceBtn.addEventListener('click', () => isChatBotListening ? stopChatListening() : startChatListening());
         
+        
         document.getElementById('tts-controls').addEventListener('click', (e) => {
             if (e.target.classList.contains('speed-btn')) {
                 currentPlaybackRate = parseFloat(e.target.dataset.speed);
@@ -547,6 +841,52 @@ document.addEventListener('DOMContentLoaded', () => {
         addCategoryForm.addEventListener('submit', handleAddCategory);
         adminUploadForm.addEventListener('submit', handleUploadBook);
         window.addEventListener('keydown', (e) => { if(e.key === '~') toggleLanguage(); });
+        generateQBankBtn.addEventListener('click', handleGenerateQuestionBank);
+        startFlashcardBtn.addEventListener("click", startFlashcardSession);
+        flashcardNextBtn.addEventListener("click", showNextFlashcard);
+        flashcardQuitBtn.addEventListener("click", () => {
+            showTestPanel("q-bank-portal");
+            loadQuestionBank();
+        });
+        resetQuizProgressBtn.addEventListener("click", handleResetProgress);
+        // Auto TTS reading when user focuses on summary
+        summaryContentArea.addEventListener("focus", () => {
+            const text = summaryContentArea.innerText.trim();
+            if (text.length > 0) {
+                speak(text);
+            }
+        });
+        if (readContent) {
+            readContent.addEventListener("focus", () => {
+                const text = readContent.innerText.trim();
+                if (text.length > 0) {
+                    speak(text);
+                }
+            });
+        }
+
+        function stopTTS() {
+            // Stop server audio
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                currentAudio = null;
+            }
+            // Stop browser TTS
+            speechSynthesis.cancel();
+        }
+
+        
+        chatStatus.textContent = "Generating voice...";
+        currentAudio.oncanplay = () => {
+        chatStatus.textContent = "";
+        };
+        
+
+
+        
+
+        
     } catch(e) { console.error(e); }
 
     // --- 13. INIT ---
